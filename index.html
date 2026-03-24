@@ -1,1 +1,191 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open Faith</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <style>
+    body { margin:0; font-family:'Inter',sans-serif; background:#f8fafc; color:#1e293b; }
+    header { background:#0f172a; color:white; padding:50px 20px; text-align:center; }
+    .container { max-width:900px; margin:auto; padding:20px; }
+    .card { background:white; padding:20px; margin-top:15px; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,0.05); }
+    textarea,input { width:100%; padding:12px; border-radius:10px; border:1px solid #ccc; margin-top:10px; }
+    button { background:#2563eb; color:white; border:none; padding:8px 12px; border-radius:8px; margin-top:10px; cursor:pointer; }
+    .question { font-weight:600; }
+    .answer { margin-top:10px; color:#475569; }
+    .category { font-size:12px; background:#e2e8f0; padding:4px 8px; border-radius:6px; margin-top:10px; display:inline-block; }
+    .like-btn { background:#e11d48; }
+    .comment-box { margin-top:10px; }
+    .comment { font-size:0.9rem; background:#f1f5f9; padding:8px; border-radius:6px; margin-top:5px; }
+    .featured { border:2px solid gold; }
+    .verse { background:#ecfeff; border-left:5px solid #06b6d4; padding:15px; border-radius:8px; margin-top:20px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Open Faith</h1>
+  <p>Ask. Learn. Grow.</p>
+</header>
+
+<div class="container">
+
+  <div class="card verse" id="verseBox">Loading daily verse...</div>
+
+  <h3>Ask a Question</h3>
+  <textarea id="questionInput" placeholder="Ask anonymously..."></textarea>
+  <button onclick="submitQuestion()">Submit</button>
+
+  <h3>Search</h3>
+  <input id="search" placeholder="Search...">
+
+  <h3>Questions & Answers</h3>
+  <div id="posts"></div>
+
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_DOMAIN",
+  projectId: "YOUR_PROJECT_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+function submitQuestion() {
+  const q = document.getElementById("questionInput").value;
+  if (!q) return alert("Enter a question");
+
+  db.collection("questions").add({
+    question: q,
+    answer: "",
+    category: "pending",
+    likes: 0,
+    featured: false,
+    created: Date.now()
+  });
+
+  document.getElementById("questionInput").value = "";
+  alert("Submitted");
+}
+
+function loadPosts() {
+  db.collection("questions").orderBy("created", "desc")
+    .onSnapshot(snapshot => {
+      const container = document.getElementById("posts");
+      container.innerHTML = "";
+
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        if (!d.answer || d.category === "pending") return;
+
+        const div = document.createElement("div");
+        div.className = "card" + (d.featured ? " featured" : "");
+
+        div.innerHTML = `
+          <div class="question">Q: ${d.question}</div>
+          <div class="answer"><strong>A:</strong> ${d.answer}</div>
+          <div class="category">${d.category}</div>
+          <button class="like-btn" onclick="likePost('${doc.id}', ${d.likes || 0})">❤️ ${d.likes || 0}</button>
+          <div class="comment-box">
+            <input placeholder="Write a comment..." onkeypress="handleComment(event, '${doc.id}')">
+            <div id="comments-${doc.id}"></div>
+          </div>
+        `;
+
+        container.appendChild(div);
+        loadComments(doc.id);
+      });
+    });
+}
+
+function likePost(id, currentLikes) {
+  db.collection("questions").doc(id).update({
+    likes: currentLikes + 1
+  });
+}
+
+// COMMENTS
+function handleComment(e, id) {
+  if (e.key === 'Enter') {
+    const text = e.target.value;
+    if (!text) return;
+
+    db.collection("questions").doc(id).collection("comments").add({
+      text,
+      created: Date.now()
+    });
+
+    e.target.value = "";
+  }
+}
+
+function loadComments(id) {
+  db.collection("questions").doc(id).collection("comments")
+    .orderBy("created")
+    .onSnapshot(snapshot => {
+      const container = document.getElementById(`comments-${id}`);
+      container.innerHTML = "";
+
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        const div = document.createElement("div");
+        div.className = "comment";
+        div.innerText = d.text;
+        container.appendChild(div);
+      });
+    });
+}
+
+// SEARCH
+
+document.getElementById("search").addEventListener("input", e => {
+  const term = e.target.value.toLowerCase();
+
+  db.collection("questions").get().then(snapshot => {
+    const container = document.getElementById("posts");
+    container.innerHTML = "";
+
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      if (!d.answer || d.category === "pending") return;
+
+      if (d.question.toLowerCase().includes(term) || d.answer.toLowerCase().includes(term)) {
+        const div = document.createElement("div");
+        div.className = "card";
+        div.innerHTML = `<div class="question">Q: ${d.question}</div><div class="answer">${d.answer}</div>`;
+        container.appendChild(div);
+      }
+    });
+  });
+});
+
+// DAILY VERSE
+const verses = [
+  "Philippians 4:13 — I can do all things through Christ.",
+  "Jeremiah 29:11 — Plans to prosper you.",
+  "Psalm 23:1 — The Lord is my shepherd.",
+  "Romans 8:28 — All things work for good."
+];
+
+function loadVerse() {
+  const day = new Date().getDate();
+  document.getElementById("verseBox").innerText = verses[day % verses.length];
+}
+
+loadPosts();
+loadVerse();
+</script>
+
+</body>
+</html>
